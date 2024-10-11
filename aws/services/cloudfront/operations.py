@@ -2,9 +2,10 @@ from botocore.exceptions import ClientError
 
 
 class CloudFrontOperations:
-    def __init__(self, session):
+    def __init__(self, session, username):
         self.cloudfront_client = session.client('cloudfront')
         self.sts_client = session.client('sts')
+        self.username = username
 
     def get_or_create_origin_access_control(self):
         oac_name = 'S3OriginAccessControl'
@@ -215,6 +216,51 @@ class CloudFrontOperations:
 
         print(f"CloudFront function '{function_name}' has been associated with distribution '{distribution_id}' for redirecting requests to EC2.")
 
+    def tag_distribution(self, distribution_id):
+        try:
+            distribution_response = self.cloudfront_client.get_distribution(Id=distribution_id)
+            tags_response = self.cloudfront_client.list_tags_for_resource(Resource=distribution_response['Distribution']['ARN'])
+            current_tags = tags_response['Tags']['Items']
+            existing_keys = [tag['Key'] for tag in current_tags]
+
+            if 'bototag' not in existing_keys:
+                print("Tag 'bototag' not found. Adding it now.")
+                current_tags.append({'Key': 'bototag', 'Value': 'YourValue'})
+
+                self.cloudfront_client.tag_resource(
+                    Resource=distribution_response['Distribution']['ARN'],
+                    Tags={'Items': current_tags}
+                )
+                print("Tag 'bototag' added successfully.")
+            else:
+                print("Tag 'bototag' already exists.")
+
+        except ClientError as e:
+            print(f"Error retrieving or updating tags: {e}")
+
+    # def tag_function(self, cloudfrontfunction_name):
+    #     try:
+    #         function_response = self.cloudfront_client.describe_function(Name=cloudfrontfunction_name)
+    #         function_arn = function_response['FunctionSummary']['FunctionMetadata']['FunctionARN']
+    #         existing_tags = function_response['FunctionSummary']['FunctionMetadata'].get('FunctionTags', {})
+    #         pdb.set_trace()
+
+    #         if 'bototag' in existing_tags:
+    #              print(f"Tag bototag already exists on function '{cloudfrontfunction_name}'. No action taken.")
+    #         else:
+    #             new_tags = existing_tags.copy()
+    #             new_tags['bototag'] = 'YourValue'
+    #             self.cloudfront_client.tag_resource(
+    #                 Resource=function_arn,
+    #                 Tags={
+    #                     'Items': [{'Key': k, 'Value': v} for k, v in new_tags.items()]
+    #                 }
+    #             )
+    #             print(f"Tag added to function {cloudfrontfunction_name}")
+
+    #     except ClientError as e:
+    #         print(f"Error retrieving or updating function tags: {e}")
+
     def setup_cloudfront(self, bucket_name, region, cloudfrontfunction_name, ec2_endpoint):
         origin_access_control_id = self.get_or_create_origin_access_control()
 
@@ -227,7 +273,9 @@ class CloudFrontOperations:
             self.update_distribution_oac(distribution_id, origin_access_control_id)
             print(f'Updated existing distribution with new Origin Access Control {origin_access_control_id}')
 
+        self.tag_distribution(distribution_id)
         self.create_or_update_cloudfront_function(cloudfrontfunction_name, ec2_endpoint)
+        # self.tag_function(cloudfrontfunction_name)
         self.associate_function_with_distribution(distribution_id, cloudfrontfunction_name)
 
         return distribution_id

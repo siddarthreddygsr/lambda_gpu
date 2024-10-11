@@ -5,9 +5,10 @@ from tqdm import tqdm
 
 
 class S3Operations:
-    def __init__(self, session, region=None):
+    def __init__(self, session, username, region=None):
         self.s3_client = session.client('s3', region_name=region)
         self.region = region
+        self.username = username
 
     def create_bucket(self, bucket_name):
         try:
@@ -36,6 +37,37 @@ class S3Operations:
         #     }
         # )
         # print("Disabled block public access")
+
+    def tag_bucket(self, bucket_name):
+        try:
+            tagging_response = self.s3_client.get_bucket_tagging(Bucket=bucket_name)
+            current_tags = tagging_response['TagSet']
+            existing_keys = [tag['Key'] for tag in current_tags]
+
+            if 'bototag' not in existing_keys:
+                print("Tag 'bototag' not found. Adding it...")
+                current_tags.append({'Key': 'bototag', 'Value': 'YourValue'})
+
+                self.s3_client.put_bucket_tagging(
+                    Bucket=bucket_name,
+                    Tagging={'TagSet': current_tags}
+                )
+                print("Tag 'bototag' added successfully.")
+            else:
+                print("Tag 'bototag' already exists.")
+
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'NoSuchTagSet':
+                print("No tags found. Adding 'bototag'.")
+                new_tags = [{'Key': 'bototag', 'Value': f'{self.username}-s3-01'}]
+
+                self.s3_client.put_bucket_tagging(
+                    Bucket=bucket_name,
+                    Tagging={'TagSet': new_tags}
+                )
+                print("Tag 'bototag' added successfully.")
+            else:
+                print(f"Error retrieving tags: {e}")
 
     def upload_files(self, bucket_name, folder_path):
         mime_types = {

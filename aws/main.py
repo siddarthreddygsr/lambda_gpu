@@ -12,10 +12,14 @@ def setup_static_website(bucket_name, folder_path, cloudfrontfunction_name, ec2_
         region_name=region
     )
 
-    s3_ops = S3Operations(session, region)
-    cloudfront_ops = CloudFrontOperations(session)
+    iam_client = session.client('iam')
+    username = iam_client.get_user()['User']['UserName']
+
+    s3_ops = S3Operations(session, username, region)
+    cloudfront_ops = CloudFrontOperations(session, username)
 
     s3_ops.create_bucket(bucket_name)
+    s3_ops.tag_bucket(bucket_name)
     s3_ops.upload_files(bucket_name, folder_path)
 
     distribution_id = cloudfront_ops.setup_cloudfront(bucket_name, region, cloudfrontfunction_name, ec2_endpoint)
